@@ -127,16 +127,21 @@ function ConfirmScreen({ order, cartLines, onReset }) {
   const [downloading, setDownloading] = useState(false);
   const [rating, setRating] = useState(0);
   const [feedbackSent, setFeedbackSent] = useState(false);
-  const [liveStatus, setLiveStatus] = useState(order.orderStatus || 'PENDING');
+  const [liveStatus, setLiveStatus] = useState(order.orderStatus || 'PLACED');
   const ref = useRef(null);
 
   useEffect(() => {
     if (!order.id) return;
-    const interval = setInterval(() => {
-      api.get(`/api/orders/${order.id}`)
-        .then(res => setLiveStatus(res.data.orderStatus))
+    const poll = () => {
+      api.get('/api/orders/active')
+        .then(res => {
+          const found = res.data.find(o => o.id === order.id);
+          if (found) setLiveStatus(found.orderStatus);
+        })
         .catch(console.error);
-    }, 5000);
+    };
+    poll();
+    const interval = setInterval(poll, 4000);
     return () => clearInterval(interval);
   }, [order.id]);
 
@@ -151,6 +156,14 @@ function ConfirmScreen({ order, cartLines, onReset }) {
     setDownloading(false);
   };
 
+  const STATUS_STEPS = [
+    { key: 'PLACED', icon: '📋', label: 'Order Placed' },
+    { key: 'PACKING', icon: '📦', label: 'Preparing' },
+    { key: 'READY', icon: '✅', label: 'Ready for Pickup' },
+    { key: 'HANDED_OVER', icon: '🎉', label: 'Collected' },
+  ];
+  const currentIdx = STATUS_STEPS.findIndex(s => s.key === liveStatus);
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-5" style={{background:'#0a0f1a'}}>
       <div className="w-full max-w-sm">
@@ -163,15 +176,27 @@ function ConfirmScreen({ order, cartLines, onReset }) {
 
           <div className="rounded-2xl p-6 mb-4 animate-token" style={{background:'linear-gradient(135deg,#f59e0b22,#d9770622)',border:'2px solid rgba(245,158,11,0.3)'}}>
             <p className="text-xs font-black uppercase tracking-widest mb-1" style={{color:'#f59e0b'}}>Your Token</p>
-            <p className="text-6xl font-black" style={{color:'#fbbf24',letterSpacing:'-0.02em'}}>{order.tokenNumber}</p>
+            <p className="text-5xl font-black" style={{color:'#fbbf24',letterSpacing:'-0.02em'}}>{order.tokenNumber}</p>
           </div>
 
-          <div className="mb-6 p-4 rounded-xl" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)'}}>
-            <p className="text-xs font-black uppercase tracking-widest mb-2" style={{color:'#9ca3af'}}>Live Kitchen Status</p>
-            {liveStatus === 'PENDING' && <div className="text-lg font-black animate-pulse" style={{color:'#f87171'}}>🕒 Waiting for Kitchen</div>}
-            {liveStatus === 'PACKING' && <div className="text-lg font-black animate-pulse" style={{color:'#f59e0b'}}>📦 Preparing your order</div>}
-            {liveStatus === 'READY' && <div className="text-lg font-black animate-bounce" style={{color:'#10b981'}}>✅ Ready for Pickup!</div>}
-            {liveStatus === 'HANDED_OVER' && <div className="text-lg font-black" style={{color:'#3b82f6'}}>🎉 Enjoy your food!</div>}
+          {/* Live Status Tracker — Blinkit/Zomato style */}
+          <div className="mb-4 p-4 rounded-xl text-left" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)'}}>
+            <p className="text-xs font-black uppercase tracking-widest mb-3 text-center" style={{color:'#9ca3af'}}>Live Order Status</p>
+            {liveStatus === 'CANCELLED' ? (
+              <div className="text-center text-lg font-black" style={{color:'#ef4444'}}>❌ Order Cancelled</div>
+            ) : (
+              <div className="space-y-0">
+                {STATUS_STEPS.map((step, i) => {
+                  const state = i < currentIdx ? 'completed' : i === currentIdx ? 'active' : 'pending';
+                  return (
+                    <div key={step.key} className={`rider-step ${state}`}>
+                      <div className="step-dot">{step.icon}</div>
+                      <span className="text-sm font-bold" style={{color: state === 'pending' ? '#6b7280' : '#f9fafb'}}>{step.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <p className="text-sm font-bold mb-4" style={{color:'#9ca3af'}}>{order.customerName}</p>
@@ -578,19 +603,44 @@ export default function CustomerView() {
               </div>
             )}
 
-            {/* 3. Scheduled Future Pickups */}
-            <div className="mb-4 flex justify-between items-center p-3 rounded-xl" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}>
-              <span className="text-sm font-bold" style={{color:'#9ca3af'}}>Pickup Time</span>
-              <select 
-                value={scheduleTime} 
-                onChange={e => setScheduleTime(e.target.value)}
-                className="bg-transparent text-sm font-bold outline-none" 
-                style={{color:'#f59e0b'}}
-              >
-                <option value="now">Asap (10 mins)</option>
-                <option value="today-1700">Today, 5:00 PM</option>
-                <option value="tomorrow-1000">Tomorrow, 10:00 AM</option>
-              </select>
+            {/* 3. Blinkit-Style Delivery/Pickup Time Slots */}
+            <div className="mb-4 p-3 rounded-xl" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}>
+              <p className="text-xs font-black uppercase tracking-wider mb-2" style={{color:'#9ca3af'}}>
+                {orderType === 'DELIVERY' ? '🛵 Delivery Time' : '🍽️ Pickup Time'}
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { val: 'now', label: orderType === 'DELIVERY' ? '10 min' : 'ASAP', sub: 'Express' },
+                  { val: '30min', label: '30 min', sub: 'Standard' },
+                  { val: '1hr', label: '1 hour', sub: 'Relaxed' },
+                ].map(slot => (
+                  <button
+                    key={slot.val}
+                    onClick={() => setScheduleTime(slot.val)}
+                    className={`time-slot ${scheduleTime === slot.val ? 'active' : ''}`}
+                  >
+                    <div className="font-black text-sm">{slot.label}</div>
+                    <div className="text-[10px] opacity-60">{slot.sub}</div>
+                  </button>
+                ))}
+              </div>
+              {orderType === 'DELIVERY' && (
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {[
+                    { val: '2hr', label: '2 hours' },
+                    { val: 'today-eve', label: 'Evening' },
+                    { val: 'tomorrow', label: 'Tomorrow' },
+                  ].map(slot => (
+                    <button
+                      key={slot.val}
+                      onClick={() => setScheduleTime(slot.val)}
+                      className={`time-slot ${scheduleTime === slot.val ? 'active' : ''}`}
+                    >
+                      <div className="font-black text-xs">{slot.label}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between py-3 mb-2" style={{borderTop:'1px solid rgba(255,255,255,0.08)'}}>
