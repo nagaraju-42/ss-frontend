@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
-import { AlertCircle, CheckCircle2, ChevronRight, Download, Minus, Plus, Search, ShoppingBag, Sparkles, User, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronRight, Clock, Download, MapPin, Minus, Plus, Search, ShoppingBag, Sparkles, User, X } from 'lucide-react';
 import { api, generateId, getDeviceId, RAZORPAY_KEY_ID } from '../api';
 import LazyImage from './LazyImage';
 
@@ -274,6 +274,8 @@ export default function CustomerView() {
   const [fetching, setFetching]     = useState(true);
   const [scheduleTime, setScheduleTime] = useState('now');
   const [orderType, setOrderType]   = useState('DINE_IN'); // 'DINE_IN' or 'DELIVERY'
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [customTime, setCustomTime] = useState('');
   const isProcessing = useRef(false);
 
   // 4. Happy Hour Logic (8 PM to 6 AM)
@@ -316,16 +318,47 @@ export default function CustomerView() {
 
   const resetOrder = () => { setCart({}); setOrder(null); setIkey(generateId()); isProcessing.current = false; setLoading(false); };
 
+  const sendWhatsAppNotification = (orderData) => {
+    const OWNER_PHONE = '919347012333'; // Owner's WhatsApp number
+    const items = (orderData.items || cartLines).map(i => `${i.quantity}× ${i.productName || i.name}`).join(', ');
+    const timeLabel = scheduleTime === 'custom' ? customTime : scheduleTime;
+    const msg = `🧁 *New Order — Softy Bakeries*\n` +
+      `Token: *${orderData.tokenNumber}*\n` +
+      `Customer: ${orderData.customerName}\n` +
+      (orderData.customerPhone ? `Phone: ${orderData.customerPhone}\n` : '') +
+      `Type: ${orderType === 'DELIVERY' ? '🛵 Delivery' : '🍽️ In-Store'}\n` +
+      (orderType === 'DELIVERY' && deliveryAddress ? `Address: ${deliveryAddress}\n` : '') +
+      `Time: ${timeLabel}\n` +
+      `Items: ${items}\n` +
+      `Total: ₹${orderData.totalAmount.toFixed(0)}\n` +
+      `Payment: ${orderData.paymentStatus}`;
+    window.open(`https://wa.me/${OWNER_PHONE}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
   const placeOrder = async (provider) => {
     if (!cartLines.length || isProcessing.current) return;
+    // Validate delivery address for delivery orders
+    if (orderType === 'DELIVERY' && !deliveryAddress.trim()) {
+      alert('Please enter your delivery address'); return;
+    }
     isProcessing.current = true; setLoading(true);
     try {
       const headers = { 'Idempotency-Key': ikey, 'X-Device-Id': getDeviceId() };
-      const payload = { customerName: customer.name, customerPhone: customer.phone||null, paymentProvider: provider, items: cartLines.map(i => ({ productId: i.id, quantity: i.quantity })) };
+      const finalTime = scheduleTime === 'custom' ? customTime : scheduleTime;
+      const payload = {
+        customerName: customer.name,
+        customerPhone: customer.phone || null,
+        paymentProvider: provider,
+        orderType,
+        deliveryAddress: orderType === 'DELIVERY' ? deliveryAddress.trim() : null,
+        scheduleTime: finalTime,
+        items: cartLines.map(i => ({ productId: i.id, quantity: i.quantity })),
+      };
       const res = await api.post('/api/orders/create', payload, { headers });
 
       if (provider === 'CASH') { 
         saveToHistory(res.data);
+        sendWhatsAppNotification(res.data);
         setOrder(res.data); setLoading(false); setCartOpen(false); return; 
       }
 
@@ -345,6 +378,7 @@ export default function CustomerView() {
         handler: async (pr) => {
           const v = await api.post('/api/orders/verify', pr);
           saveToHistory(v.data);
+          sendWhatsAppNotification(v.data);
           setOrder(v.data); setLoading(false); setCartOpen(false);
         },
       });
@@ -625,11 +659,12 @@ export default function CustomerView() {
                 ))}
               </div>
               {orderType === 'DELIVERY' && (
-                <div className="mt-2 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-4 gap-2">
                   {[
                     { val: '2hr', label: '2 hours' },
                     { val: 'today-eve', label: 'Evening' },
                     { val: 'tomorrow', label: 'Tomorrow' },
+                    { val: 'custom', label: '🎂 Custom' },
                   ].map(slot => (
                     <button
                       key={slot.val}
@@ -642,6 +677,41 @@ export default function CustomerView() {
                 </div>
               )}
             </div>
+
+            {/* Delivery Address (only for DELIVERY) */}
+            {orderType === 'DELIVERY' && (
+              <div className="mb-4 p-3 rounded-xl" style={{background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}>
+                <p className="text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-1" style={{color:'#9ca3af'}}>
+                  <MapPin size={12} /> Delivery Address *
+                </p>
+                <textarea
+                  value={deliveryAddress}
+                  onChange={e => setDeliveryAddress(e.target.value)}
+                  placeholder="House/Flat No, Street, Landmark, Area, City"
+                  rows={2}
+                  className="field text-sm"
+                  style={{resize:'none'}}
+                  id="delivery-address"
+                />
+              </div>
+            )}
+
+            {/* Custom Time Input (for birthday cakes etc.) */}
+            {scheduleTime === 'custom' && (
+              <div className="mb-4 p-3 rounded-xl" style={{background:'rgba(168,85,247,0.08)', border:'1px solid rgba(168,85,247,0.2)'}}>
+                <p className="text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-1" style={{color:'#c084fc'}}>
+                  <Clock size={12} /> Custom Time (for birthday cakes etc.)
+                </p>
+                <input
+                  type="datetime-local"
+                  value={customTime}
+                  onChange={e => setCustomTime(e.target.value)}
+                  className="field text-sm"
+                  style={{colorScheme:'dark'}}
+                  id="custom-time-input"
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between py-3 mb-2" style={{borderTop:'1px solid rgba(255,255,255,0.08)'}}>
               <span className="font-black" style={{color:'#9ca3af'}}>Total</span>
@@ -662,17 +732,18 @@ export default function CustomerView() {
               </div>
             )}
 
+            {/* Payment Buttons */}
             <div className="grid grid-cols-2 gap-3">
               <button
-                disabled={loading}
+                disabled={loading || (orderType === 'DELIVERY' && !deliveryAddress.trim())}
                 onClick={() => placeOrder('CASH')}
                 className="btn btn-dark"
                 id="pay-cash-btn"
               >
-                {loading ? <span className="spinner" /> : '💵'} Pay Cash
+                {loading ? <span className="spinner" /> : '💵'} {orderType === 'DELIVERY' ? 'COD' : 'Pay Cash'}
               </button>
               <button
-                disabled={loading}
+                disabled={loading || (orderType === 'DELIVERY' && !deliveryAddress.trim())}
                 onClick={() => placeOrder('RAZORPAY')}
                 className="btn btn-primary"
                 id="pay-online-btn"
@@ -680,6 +751,10 @@ export default function CustomerView() {
                 {loading ? <span className="spinner" /> : '📱'} Pay Online
               </button>
             </div>
+
+            {orderType === 'DELIVERY' && !deliveryAddress.trim() && (
+              <p className="text-center text-xs font-bold mt-2 animate-pulse" style={{color:'#f87171'}}>⚠️ Enter delivery address to place order</p>
+            )}
           </div>
         </div>
       )}

@@ -81,9 +81,16 @@ function DeliveryCard({ order, onAccept, onPickedUp, onDelivered, expanded, onEx
           {/* Customer Info + Location */}
           <div className="p-3 rounded-xl mb-3" style={{background:'rgba(255,255,255,0.04)'}}>
             <p className="text-xs font-bold flex items-center gap-1 mb-2" style={{color:'#9ca3af'}}>
-              <MapPin size={12} /> Delivery Location
+              <MapPin size={12} /> {order.orderType === 'DELIVERY' ? 'Delivery Location' : 'In-Store Pickup'}
             </p>
-            <p className="text-sm font-bold" style={{color:'#f9fafb'}}>Jodimetla, Pocharam, Telangana</p>
+            <p className="text-sm font-bold" style={{color:'#f9fafb'}}>
+              {order.deliveryAddress || 'Softy Bakeries — Jodimetla, Pocharam'}
+            </p>
+            {order.scheduleTime && order.scheduleTime !== 'now' && (
+              <p className="text-xs font-bold mt-1 flex items-center gap-1" style={{color:'#c084fc'}}>
+                <Clock size={10} /> Scheduled: {order.scheduleTime}
+              </p>
+            )}
             {order.customerPhone && (
               <a href={`tel:${order.customerPhone}`} className="mt-2 flex items-center gap-2 text-sm font-bold" style={{color:'#3b82f6'}}>
                 <Phone size={14} /> {order.customerPhone}
@@ -94,7 +101,7 @@ function DeliveryCard({ order, onAccept, onPickedUp, onDelivered, expanded, onEx
           {/* Action Buttons */}
           <div className="grid grid-cols-2 gap-2">
             <a 
-              href="https://maps.google.com/?q=Jodimetla,+Pocharam,+Telangana" 
+              href={`https://maps.google.com/?q=${encodeURIComponent(order.deliveryAddress || 'Jodimetla, Pocharam, Telangana')}`}
               target="_blank" rel="noreferrer"
               className="btn btn-dark text-xs flex justify-center py-3"
             >
