@@ -208,11 +208,12 @@ export default function OwnerView() {
                   <th>Amount</th>
                   <th>Payment</th>
                   <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="text-center py-12">
+                  <tr><td colSpan={7} className="text-center py-12">
                     <span className="spinner mx-auto block" />
                   </td></tr>
                 ) : display.length === 0 ? (
@@ -230,6 +231,20 @@ export default function OwnerView() {
                     <td><span className="font-black" style={{color:'#10b981'}}>₹{o.totalAmount.toFixed(0)}</span></td>
                     <td><span className={`badge ${PAYMENT_BADGE[o.paymentStatus]||'badge-purple'}`}>{o.paymentStatus?.replace('_',' ')}</span></td>
                     <td><span className={`badge ${ORDER_BADGE[o.orderStatus]||'badge-purple'}`}>{o.orderStatus}</span></td>
+                    <td>
+                      {o.paymentStatus === 'PENDING_CASH' && (
+                        <button 
+                          onClick={() => {
+                            if(confirm('Mark order #' + o.tokenNumber + ' as PAID?')) {
+                              api.post(`/api/orders/${o.id}/pay-cash`).then(fetchOrders).catch(alert);
+                            }
+                          }}
+                          className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-green-500 text-gray-900 hover:bg-green-400"
+                        >
+                          Verify Cash
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

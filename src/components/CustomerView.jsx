@@ -229,32 +229,60 @@ function ConfirmScreen({ order, cartLines, onReset }) {
           </button>
         </div>
 
-        {/* 6. One-Tap Feedback Loop */}
-        {!feedbackSent ? (
-          <div className="glass-card p-4 mb-4 animate-fadeInUp delay-3 text-center">
-            <p className="text-sm font-bold mb-2" style={{color:'#f9fafb'}}>How was your experience?</p>
-            <div className="flex justify-center gap-2">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button 
-                  key={star} 
-                  onClick={() => { setRating(star); setTimeout(() => setFeedbackSent(true), 600); }}
-                  className="text-2xl transition-transform hover:scale-125"
-                  style={{color: rating >= star ? '#f59e0b' : '#374151'}}
-                >
-                  ★
-                </button>
-              ))}
+        {/* 6. One-Tap Feedback Pop-up (Only after Handed Over) */}
+        {liveStatus === 'HANDED_OVER' && !feedbackSent && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fadeIn">
+            <div className="glass-card p-8 w-full max-w-sm text-center animate-scaleIn relative overflow-hidden shadow-2xl">
+              <div className="absolute top-0 left-0 w-full h-1 bg-amber-500" />
+              <div className="text-5xl mb-4 animate-bounce">🎉</div>
+              <h2 className="text-xl font-black mb-2" style={{color:'#f9fafb'}}>Hope you enjoyed it!</h2>
+              <p className="text-sm font-bold mb-6" style={{color:'#9ca3af'}}>Rate your experience with Softy Bakeries</p>
+              
+              <div className="flex justify-center gap-3 mb-8">
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button 
+                    key={star} 
+                    onClick={() => { setRating(star); setTimeout(() => setFeedbackSent(true), 800); }}
+                    className="text-4xl transition-all hover:scale-125 hover:rotate-6 active:scale-95"
+                    style={{color: rating >= star ? '#f59e0b' : '#1f2937', textShadow: rating >= star ? '0 0 15px rgba(245,158,11,0.5)' : 'none'}}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+              
+              <button 
+                onClick={() => setFeedbackSent(true)}
+                className="text-xs font-black uppercase tracking-widest transition-colors"
+                style={{color:'#6b7280'}}
+              >
+                Maybe Later
+              </button>
             </div>
-          </div>
-        ) : (
-          <div className="glass-card p-4 mb-4 animate-fadeInUp text-center" style={{background:'rgba(16,185,129,0.1)', borderColor:'rgba(16,185,129,0.2)'}}>
-            <p className="text-sm font-bold" style={{color:'#10b981'}}>Thank you for your feedback! 💖</p>
           </div>
         )}
 
-        <button onClick={onReset} className="btn btn-primary w-full animate-fadeInUp delay-3" id="new-order-btn" style={{marginTop:'10px'}}>
-          <ShoppingBag size={18} /> Place Another Order
-        </button>
+        {feedbackSent && liveStatus === 'HANDED_OVER' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fadeIn">
+            <div className="glass-card p-8 w-full max-w-sm text-center animate-scaleIn shadow-2xl" style={{background:'rgba(16,185,129,0.1)', borderColor:'rgba(16,185,129,0.2)'}}>
+              <div className="text-5xl mb-4">❤️</div>
+              <p className="text-lg font-black" style={{color:'#f9fafb'}}>Thank you!</p>
+              <p className="text-sm font-bold mt-1" style={{color:'#10b981'}}>Your feedback helps us grow.</p>
+              <button 
+                onClick={onReset}
+                className="btn btn-primary w-full mt-8 flex items-center justify-center gap-2"
+              >
+                <ShoppingBag size={18} /> Place Another Order
+              </button>
+            </div>
+          </div>
+        )}
+
+        {liveStatus !== 'HANDED_OVER' && (
+          <button onClick={onReset} className="btn btn-dark w-full animate-fadeInUp delay-3 opacity-50" id="new-order-btn" style={{marginTop:'10px'}}>
+             Wait for Collection...
+          </button>
+        )}
       </div>
     </main>
   );
@@ -318,21 +346,9 @@ export default function CustomerView() {
 
   const resetOrder = () => { setCart({}); setOrder(null); setIkey(generateId()); isProcessing.current = false; setLoading(false); };
 
+  // WhatsApp disabled per request
   const sendWhatsAppNotification = (orderData) => {
-    const OWNER_PHONE = '919347012333'; // Owner's WhatsApp number
-    const items = (orderData.items || cartLines).map(i => `${i.quantity}× ${i.productName || i.name}`).join(', ');
-    const timeLabel = scheduleTime === 'custom' ? customTime : scheduleTime;
-    const msg = `🧁 *New Order — Softy Bakeries*\n` +
-      `Token: *${orderData.tokenNumber}*\n` +
-      `Customer: ${orderData.customerName}\n` +
-      (orderData.customerPhone ? `Phone: ${orderData.customerPhone}\n` : '') +
-      `Type: ${orderType === 'DELIVERY' ? '🛵 Delivery' : '🍽️ In-Store'}\n` +
-      (orderType === 'DELIVERY' && deliveryAddress ? `Address: ${deliveryAddress}\n` : '') +
-      `Time: ${timeLabel}\n` +
-      `Items: ${items}\n` +
-      `Total: ₹${orderData.totalAmount.toFixed(0)}\n` +
-      `Payment: ${orderData.paymentStatus}`;
-    window.open(`https://wa.me/${OWNER_PHONE}?text=${encodeURIComponent(msg)}`, '_blank');
+    // Disabled
   };
 
   const placeOrder = async (provider) => {
@@ -382,7 +398,11 @@ export default function CustomerView() {
           setOrder(v.data); setLoading(false); setCartOpen(false);
         },
       });
-      rzp.on('payment.failed', () => { isProcessing.current = false; setLoading(false); });
+      rzp.on('payment.failed', (response) => { 
+        isProcessing.current = false; 
+        setLoading(false);
+        alert('Payment Cancelled/Failed. You can try again from the cart.');
+      });
       rzp.open();
     } catch (err) {
       alert(err.response?.data?.message || err.message || 'Order failed. Try again.');
